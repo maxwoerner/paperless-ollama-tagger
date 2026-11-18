@@ -1,0 +1,26 @@
+services:
+  paperless-ollama-tagger:
+    build: .
+    restart: unless-stopped
+    environment:
+      TZ: Europe/Berlin               # needed for SCHEDULE_CRON to use local time
+      PAPERLESS_URL: http://paperless:8000
+      PAPERLESS_TOKEN: change-me      # API token of a DEDICATED Paperless user
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: qwen3:4b
+      # Scheduling: either a cron expression (local time, see TZ) ...
+      # SCHEDULE_CRON: "0 2 * * *"
+      # ... or a fixed polling interval (used when SCHEDULE_CRON is unset)
+      POLL_INTERVAL_SECONDS: "300"
+      MAX_CHARS: "6000"
+      NUM_CTX: "8192"
+      REQUEST_TIMEOUT_SECONDS: "600"
+      RULES_PATH: /config/rules.md
+      TAG_INBOX: inbox
+      TAG_REVIEW: ai-review
+      TAG_ERROR: ai-error
+      DEFAULT_CURRENCY: EUR
+      DRY_RUN: "true"                 # start with true; set to false once the log looks right
+      LOG_LEVEL: INFO
+    volumes:
+      - ./rules.md:/config/rules.md:ro
