@@ -9,7 +9,7 @@ from croniter import croniter
 
 from tagger.config import Settings
 from tagger.ollama import OllamaClient, OllamaUnavailable, version_at_least
-from tagger.paperless import PaperlessClient, PaperlessError
+from tagger.paperless import PaperlessClient, PaperlessError, PaperlessIncompatible
 from tagger.worker import run_once
 
 log = logging.getLogger("tagger")
@@ -26,6 +26,9 @@ def startup(
     while True:
         try:
             return _startup_once(settings, paperless, ollama)
+        except PaperlessIncompatible as e:
+            log.error("%s", e)
+            raise SystemExit(2) from e
         except (PaperlessError, OllamaUnavailable) as e:
             log.warning("services not reachable yet (%s); retrying in %.0fs", e, delay)
             sleep(delay)
@@ -48,6 +51,17 @@ def _startup_once(settings: Settings, paperless, ollama) -> tuple[int, dict[str,
         log.error("tag %r does not exist in Paperless; create it first", settings.tag_inbox)
         raise SystemExit(2)
     markers = paperless.ensure_tags([settings.tag_review, settings.tag_error])
+    probe = paperless.history_probe()
+    if probe == 400:
+        log.warning("Paperless audit log is disabled: every document will be treated as "
+                    "user-edited (only empty fields get filled). Enable AUDIT_LOG_ENABLED.")
+    elif probe == 403:
+        log.warning("The tool's Paperless user lacks permission to read document history "
+                    "(needs the audit-log view permission and ownership of the documents, or "
+                    "superuser): every document will be treated as user-edited.")
+    elif probe is not None and probe != 200:
+        log.warning("Document history returned HTTP %s: every document will be treated as "
+                    "user-edited.", probe)
     return user_id, {
         "inbox": inbox,
         "review": markers[settings.tag_review],

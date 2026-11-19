@@ -40,3 +40,13 @@ def test_select():
 
 def test_unknown_type():
     assert convert_value("documentlink", "x") is None
+
+
+@pytest.mark.parametrize("raw,cur,exp", [
+    ("USD 12", "EUR", "USD12.00"), ("12,50 $", "EUR", "USD12.50"),
+    ("£ 1,234.50", "EUR", "GBP1234.50"), ("CHF 99", "EUR", "CHF99.00"),
+    ("12.50", "CHF", "CHF12.50"), ("1.234,56 €", "CHF", "EUR1234.56"),
+    ("Net 12", "EUR", "EUR12.00"),
+])
+def test_monetary_currency_from_text(raw, cur, exp):
+    assert convert_value("monetary", raw, currency=cur) == exp

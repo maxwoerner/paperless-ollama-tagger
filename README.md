@@ -2,12 +2,13 @@
 
 A small worker that, on a schedule, finds new Paperless-ngx documents (tagged `inbox`), asks a **local** Ollama model for their metadata under your own rules, and writes the result back to Paperless. Processed documents lose `inbox` and gain `ai-review` so you can check them.
 
-It only ever uses tags, correspondents and document types that already exist (it creates just its own `ai-review` / `ai-error` markers). Requires Paperless-ngx ≥ 2 and Ollama ≥ 0.5.0.
+It only ever uses tags, correspondents and document types that already exist (it creates just its own `ai-review` / `ai-error` markers). Requires Paperless-ngx ≥ 2 (the tool negotiates the newest REST API version your server supports, at least v7) and Ollama ≥ 0.5.0.
 
 ## Setup
 
 1. **Create a dedicated Paperless user** for the tool and generate an API token for it.
    User-edit detection compares the document history's actors against the tool's own user. If you use your personal token, your manual edits look like the tool's and are overwritten.
+   The history endpoint is only readable by a user who has the **audit log view permission** (`auditlog | log entry | Can view`) and who either owns the document or is a superuser. Without that, the tool cannot see who edited a document; it logs a warning at startup and treats every document as user-edited.
 2. Make sure the audit log is enabled (it is by default) and that an `inbox` tag exists. If the history is unavailable, every document is treated as user-edited (only empty fields are filled).
 3. Pull a small multilingual model with good JSON adherence in Ollama. Candidates to try: `qwen3:4b`, `gemma3:4b`, `llama3.2:3b`.
 4. Copy `rules.example.md` to `rules.md` and write your rules; copy `docker-compose.example.yml` and fill in URL, token and model. The rules file is re-read on every run.

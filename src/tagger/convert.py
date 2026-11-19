@@ -57,6 +57,22 @@ def _parse_number(raw: object, *, dot_thousands: bool) -> float | None:
     return -val if neg else val
 
 
+_SYMBOLS = {"€": "EUR", "$": "USD", "£": "GBP"}
+_CODES = {"EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "TRY"}
+
+
+def _currency_in(raw: object, default: str) -> str:
+    if not isinstance(raw, str):
+        return default
+    for sym, code in _SYMBOLS.items():
+        if sym in raw:
+            return code
+    for word in re.findall(r"[A-Za-z]{3}", raw):
+        if word.upper() in _CODES:
+            return word.upper()
+    return default
+
+
 def _select(raw: object, options: list[dict] | None) -> str | None:
     if not isinstance(raw, str) or not options:
         return None
@@ -108,5 +124,5 @@ def convert_value(
         return _parse_number(raw, dot_thousands=False)
     if data_type == "monetary":
         val = _parse_number(raw, dot_thousands=True)
-        return None if val is None else f"{currency}{val:.2f}"
+        return None if val is None else f"{_currency_in(raw, currency)}{val:.2f}"
     return _select(raw, select_options)

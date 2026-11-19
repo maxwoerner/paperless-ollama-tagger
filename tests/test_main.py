@@ -25,6 +25,11 @@ class FP:
     def own_user_id(self):
         return 7
 
+    probe = 200
+
+    def history_probe(self):
+        return self.probe
+
     def load_vocabulary(self):
         from tagger.vocab import Vocabulary
         return Vocabulary({t: i for i, t in enumerate(sorted(self.tags), 1)}, {}, {}, [])
@@ -110,3 +115,34 @@ def test_startup_version_failure_does_not_retry(settings):
     with pytest.raises(SystemExit) as e:
         startup(settings, FP("1.17.4"), FO(), sleep=sleeps.append)
     assert e.value.code == 2 and sleeps == []
+
+
+def test_startup_incompatible_api_exits(settings):
+    from tagger.paperless import PaperlessIncompatible
+
+    class Old(FP):
+        def version(self):
+            raise PaperlessIncompatible("server supports no API version >= 7")
+
+    sleeps = []
+    with pytest.raises(SystemExit) as e:
+        startup(settings, Old(), FO(), sleep=sleeps.append)
+    assert e.value.code == 2 and sleeps == []
+
+
+@pytest.mark.parametrize("status,needle", [(400, "audit"), (403, "permission")])
+def test_startup_warns_when_history_unavailable(settings, caplog, status, needle):
+    import logging
+    p = FP()
+    p.probe = status
+    with caplog.at_level(logging.WARNING, logger="tagger"):
+        startup(settings, p, FO())
+    msgs = " ".join(caplog.messages).lower()
+    assert "user-edited" in msgs and needle in msgs
+
+
+def test_startup_no_history_warning_when_ok(settings, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="tagger"):
+        startup(settings, FP(), FO())
+    assert not any("history" in m.lower() for m in caplog.messages)

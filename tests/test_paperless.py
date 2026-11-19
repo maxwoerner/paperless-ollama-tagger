@@ -2,7 +2,7 @@ import httpx
 import pytest
 import respx
 
-from tagger.paperless import PaperlessClient, PaperlessError
+from tagger.paperless import PaperlessClient, PaperlessError, PaperlessIncompatible
 
 BASE = "http://p:8000"
 
@@ -43,7 +43,7 @@ def test_auth_and_accept_headers(client):
     assert client.version() == "2.14.0"
     req = r.calls[0].request
     assert req.headers["authorization"] == "Token t"
-    assert req.headers["accept"] == "application/json; version=7"
+    assert req.headers["accept"] == "application/json; version=10"
 
 
 @respx.mock
@@ -134,3 +134,59 @@ def test_connect_error_raises(client):
     respx.get(f"{BASE}/api/").mock(side_effect=httpx.ConnectError("x"))
     with pytest.raises(PaperlessError):
         client.version()
+
+
+@respx.mock
+def test_negotiates_api_version_downwards(client):
+    def handler(request):
+        if "version=10" in request.headers["accept"]:
+            return httpx.Response(406, text="invalid version")
+        return httpx.Response(200, headers={"X-Version": "2.14.0"}, json={})
+
+    respx.get(f"{BASE}/api/").mock(side_effect=handler)
+    respx.get(f"{BASE}/api/ui_settings/").mock(return_value=httpx.Response(200, json={"user": {"id": 1}}))
+    assert client.version() == "2.14.0"
+    client.own_user_id()
+    last = respx.calls.last.request
+    assert last.headers["accept"] == "application/json; version=9"
+
+
+@respx.mock
+def test_incompatible_when_server_rejects_all_supported_versions(client):
+    respx.get(f"{BASE}/api/").mock(return_value=httpx.Response(406, text="invalid version"))
+    with pytest.raises(PaperlessIncompatible):
+        client.version()
+
+
+@respx.mock
+def test_history_probe(client):
+    respx.get(f"{BASE}/api/documents/").mock(return_value=page([{"id": 3}]))
+    h = respx.get(f"{BASE}/api/documents/3/history/")
+    h.mock(return_value=httpx.Response(200, json=[]))
+    assert client.history_probe() == 200
+    h.mock(return_value=httpx.Response(400, text="Audit log is disabled"))
+    assert client.history_probe() == 400
+    h.mock(return_value=httpx.Response(403))
+    assert client.history_probe() == 403
+
+
+@respx.mock
+def test_history_probe_without_documents(client):
+    respx.get(f"{BASE}/api/documents/").mock(return_value=page([]))
+    assert client.history_probe() is None
+
+
+@respx.mock
+def test_user_edited_real_payload_shape(client):
+    # Shape taken from paperless-ngx DocumentViewSet.history (unpaginated list;
+    # action is the lowercase display name; actor is {id, username} or null).
+    respx.get(f"{BASE}/api/documents/1/history/").mock(return_value=httpx.Response(200, json=[
+        {"id": 3, "timestamp": "2026-11-18T10:00:00Z", "action": "update",
+         "changes": {"title": ["a", "b"]}, "actor": {"id": 2, "username": "anna"}},
+        {"id": 1, "timestamp": "2026-11-18T09:00:00Z", "action": "create",
+         "changes": {}, "actor": None},
+    ]))
+    assert client.user_edited(1, 7) is True
+    respx.get(f"{BASE}/api/documents/1/history/").mock(return_value=httpx.Response(200, json=[
+        {"id": 3, "action": "Update", "changes": {}, "actor": {"id": 2, "username": "anna"}}]))
+    assert client.user_edited(1, 7) is True  # tolerate capitalised action

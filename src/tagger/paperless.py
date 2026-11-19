@@ -14,6 +14,15 @@ class PaperlessError(Exception):
     pass
 
 
+class PaperlessIncompatible(Exception):
+    """The server supports none of the API versions this tool can work with."""
+
+
+# Newest first. v7 is the oldest we need (select options as {id,label}); servers
+# only keep recent versions (currently 9 and 10), so negotiate instead of hard-coding.
+API_VERSIONS = (10, 9, 8, 7)
+
+
 class PaperlessClient:
     def __init__(self, base_url: str, token: str, timeout: float):
         self._http = httpx.Client(
@@ -21,7 +30,7 @@ class PaperlessClient:
             timeout=timeout,
             headers={
                 "Authorization": f"Token {token}",
-                "Accept": "application/json; version=7",
+                "Accept": f"application/json; version={API_VERSIONS[0]}",
             },
         )
 
@@ -44,7 +53,20 @@ class PaperlessClient:
         return r
 
     def version(self) -> str:
-        v = self._ok("GET", "/api/").headers.get("X-Version")
+        for api in API_VERSIONS:
+            self._http.headers["Accept"] = f"application/json; version={api}"
+            r = self._request("GET", "/api/")
+            if r.status_code == 406:  # server does not support this API version
+                continue
+            if r.status_code >= 400:
+                raise PaperlessError(f"GET /api/: HTTP {r.status_code} {r.text[:200]}")
+            break
+        else:
+            raise PaperlessIncompatible(
+                f"Paperless supports none of the API versions {API_VERSIONS[-1]}-{API_VERSIONS[0]}; "
+                "please upgrade Paperless-ngx"
+            )
+        v = r.headers.get("X-Version")
         if not v:
             raise PaperlessError("Paperless did not send an X-Version header")
         return v
@@ -133,9 +155,17 @@ class PaperlessClient:
             return None
         for e in entries:
             actor = e.get("actor")
-            if e.get("action") == "update" and actor is not None and actor.get("id") != own_user_id:
+            if str(e.get("action", "")).lower() == "update" and actor is not None and actor.get("id") != own_user_id:
                 return True
         return False
+
+    def history_probe(self) -> int | None:
+        """HTTP status of the history endpoint for some document (200 = usable,
+        400 = audit log disabled, 403 = missing permission); None if no documents."""
+        data = self._ok("GET", "/api/documents/", params={"page_size": 1}).json()
+        if not data.get("results"):
+            return None
+        return self._request("GET", f"/api/documents/{data['results'][0]['id']}/history/").status_code
 
     def patch_document(self, doc_id: int, body: dict) -> None:
         self._ok("PATCH", f"/api/documents/{doc_id}/", json=body)
