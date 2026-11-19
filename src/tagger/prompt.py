@@ -1,4 +1,6 @@
 """Chat messages for Ollama (pure)."""
+import json
+
 from tagger.vocab import Vocabulary, assignable_tags
 
 SYSTEM = """You extract metadata from scanned documents for a document management system.
@@ -26,3 +28,9 @@ def build_messages(
         {"role": "system", "content": SYSTEM + rules},
         {"role": "user", "content": user},
     ]
+
+
+def estimate_tokens(messages: list[dict], schema: dict) -> int:
+    """Conservative token estimate (~3 chars/token; German OCR text tokenizes poorly)."""
+    chars = sum(len(m["content"]) for m in messages) + len(json.dumps(schema))
+    return chars // 3 + 1

@@ -17,26 +17,37 @@ MIN_OLLAMA = (0, 5, 0)
 MIN_PAPERLESS_MAJOR = 2
 
 
-def startup(settings: Settings, paperless, ollama) -> tuple[int, dict[str, int]]:
-    try:
-        pv = paperless.version()
-        ov = ollama.version()
-        m = re.match(r"\d+", pv)
-        if not m or int(m.group()) < MIN_PAPERLESS_MAJOR:
-            log.error("Paperless-ngx %s is too old (need major >= %d)", pv, MIN_PAPERLESS_MAJOR)
-            raise SystemExit(2)
-        if not version_at_least(ov, MIN_OLLAMA):
-            log.error("Ollama %s is too old (need >= %s)", ov, ".".join(map(str, MIN_OLLAMA)))
-            raise SystemExit(2)
-        user_id = paperless.own_user_id()
-        inbox = paperless.load_vocabulary().tags.get(settings.tag_inbox)
-        if inbox is None:
-            log.error("tag %r does not exist in Paperless; create it first", settings.tag_inbox)
-            raise SystemExit(2)
-        markers = paperless.ensure_tags([settings.tag_review, settings.tag_error])
-    except (PaperlessError, OllamaUnavailable) as e:
-        log.error("startup failed: %s", e)
-        raise SystemExit(1) from e
+def startup(
+    settings: Settings, paperless, ollama, sleep=time.sleep
+) -> tuple[int, dict[str, int]]:
+    """Run startup checks. Unreachable services are retried with backoff (they may
+    still be booting); version and missing-inbox failures exit with code 2."""
+    delay = 5.0
+    while True:
+        try:
+            return _startup_once(settings, paperless, ollama)
+        except (PaperlessError, OllamaUnavailable) as e:
+            log.warning("services not reachable yet (%s); retrying in %.0fs", e, delay)
+            sleep(delay)
+            delay = min(delay * 2, 60.0)
+
+
+def _startup_once(settings: Settings, paperless, ollama) -> tuple[int, dict[str, int]]:
+    pv = paperless.version()
+    ov = ollama.version()
+    m = re.match(r"\d+", pv)
+    if not m or int(m.group()) < MIN_PAPERLESS_MAJOR:
+        log.error("Paperless-ngx %s is too old (need major >= %d)", pv, MIN_PAPERLESS_MAJOR)
+        raise SystemExit(2)
+    if not version_at_least(ov, MIN_OLLAMA):
+        log.error("Ollama %s is too old (need >= %s)", ov, ".".join(map(str, MIN_OLLAMA)))
+        raise SystemExit(2)
+    user_id = paperless.own_user_id()
+    inbox = paperless.load_vocabulary().tags.get(settings.tag_inbox)
+    if inbox is None:
+        log.error("tag %r does not exist in Paperless; create it first", settings.tag_inbox)
+        raise SystemExit(2)
+    markers = paperless.ensure_tags([settings.tag_review, settings.tag_error])
     return user_id, {
         "inbox": inbox,
         "review": markers[settings.tag_review],

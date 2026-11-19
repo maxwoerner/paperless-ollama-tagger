@@ -75,3 +75,38 @@ def test_next_delay_cron(settings):
 
 def test_next_delay_interval(settings):
     assert next_delay(settings, datetime(2026, 11, 18, 1, 30)) == 300
+
+
+def test_startup_waits_for_services_to_come_up(settings):
+    from tagger.paperless import PaperlessError
+    from tagger.ollama import OllamaUnavailable
+
+    class Flaky(FP):
+        n = 0
+
+        def version(self):
+            Flaky.n += 1
+            if Flaky.n < 3:
+                raise PaperlessError("connection refused")
+            return super().version()
+
+    class FlakyO(FO):
+        n = 0
+
+        def version(self):
+            FlakyO.n += 1
+            if FlakyO.n < 2:
+                raise OllamaUnavailable("down")
+            return super().version()
+
+    sleeps = []
+    uid, ids = startup(settings, Flaky(), FlakyO(), sleep=sleeps.append)
+    assert uid == 7 and "inbox" in ids
+    assert len(sleeps) >= 2 and all(0 < s <= 60 for s in sleeps)
+
+
+def test_startup_version_failure_does_not_retry(settings):
+    sleeps = []
+    with pytest.raises(SystemExit) as e:
+        startup(settings, FP("1.17.4"), FO(), sleep=sleeps.append)
+    assert e.value.code == 2 and sleeps == []

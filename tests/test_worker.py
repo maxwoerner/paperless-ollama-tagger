@@ -112,3 +112,20 @@ def test_missing_rules_file_still_runs(settings, tmp_path):
     settings.rules_path = tmp_path / "nope.md"
     p = FakePaperless([mk_doc(1)])
     assert run(settings, p, FakeOllama(ANSWER)).processed == 1
+
+
+def test_warns_when_prompt_exceeds_num_ctx(settings, caplog):
+    import logging
+    settings.num_ctx = 50
+    p = FakePaperless([mk_doc(1, content="x" * 2000)])
+    with caplog.at_level(logging.WARNING, logger="tagger"):
+        r = run(settings, p, FakeOllama(ANSWER))
+    assert r.processed == 1  # still processed, only warned
+    assert any("num_ctx" in m for m in caplog.messages)
+
+
+def test_no_context_warning_when_prompt_fits(settings, caplog):
+    import logging
+    with caplog.at_level(logging.WARNING, logger="tagger"):
+        run(settings, FakePaperless([mk_doc(1)]), FakeOllama(ANSWER))
+    assert not any("num_ctx" in m for m in caplog.messages)

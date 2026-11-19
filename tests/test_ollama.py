@@ -75,3 +75,12 @@ def test_version_at_least():
     assert version_at_least("0.5.0", (0, 5, 0)) is True
     assert version_at_least("0.4.9", (0, 5, 0)) is False
     assert version_at_least("0.12.1-rc1", (0, 5, 0)) is True
+
+
+@respx.mock
+@pytest.mark.parametrize("status", [400, 401, 404])
+def test_4xx_is_unavailable_not_bad_output(client, status):
+    # e.g. 404 "model not found" must abort the run, not mark every document ai-error
+    respx.post(f"{BASE}/api/chat").mock(return_value=httpx.Response(status, json={"error": "model not found"}))
+    with pytest.raises(OllamaUnavailable):
+        client.chat_json([], {})

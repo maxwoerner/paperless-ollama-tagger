@@ -6,7 +6,7 @@ from tagger.config import Settings
 from tagger.ollama import OllamaBadOutput, OllamaClient, OllamaTimeout, OllamaUnavailable
 from tagger.paperless import PaperlessClient, PaperlessError
 from tagger.patch import build_patch
-from tagger.prompt import build_messages
+from tagger.prompt import build_messages, estimate_tokens
 from tagger.schema import build_response_schema
 
 log = logging.getLogger("tagger")
@@ -66,6 +66,14 @@ def run_once(
                     warned_history = True
 
             messages = build_messages(rules, vocab, markers, text, settings.max_chars)
+            est = estimate_tokens(messages, schema)
+            if est > settings.num_ctx:
+                log.warning(
+                    "doc %s: prompt is ~%d tokens but num_ctx is %d; Ollama will cut off the "
+                    "start of the prompt (the rules!). Raise NUM_CTX, lower MAX_CHARS, or "
+                    "shrink the tag/correspondent lists.",
+                    doc["id"], est, settings.num_ctx,
+                )
             try:
                 answer = ollama.chat_json(messages, schema)
             except (OllamaTimeout, OllamaBadOutput) as e:

@@ -56,10 +56,10 @@ class OllamaClient:
             raise OllamaTimeout(str(e)) from e
         except httpx.HTTPError as e:
             raise OllamaUnavailable(str(e)) from e
-        if r.status_code >= 500:
-            raise OllamaUnavailable(f"HTTP {r.status_code}")
         if r.status_code >= 400:
-            raise OllamaBadOutput(f"HTTP {r.status_code}: {r.text[:200]}")
+            # 5xx, and 4xx such as 404 "model not found": a server/config problem,
+            # not this document's fault. Abort the run rather than mark documents.
+            raise OllamaUnavailable(f"HTTP {r.status_code}: {r.text[:200]}")
         try:
             return r.json()["message"]["content"]
         except (KeyError, ValueError, TypeError) as e:

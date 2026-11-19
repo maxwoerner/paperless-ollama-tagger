@@ -17,3 +17,11 @@ def test_prompt_hides_marker_tags():
     vocab = Vocabulary({"a": 1, "inbox": 2}, {}, {}, [])
     msgs = build_messages("", vocab, {"inbox"}, "t", 100)
     assert "inbox" not in msgs[1]["content"]
+
+
+def test_estimate_prompt_tokens_grows_with_content():
+    from tagger.prompt import estimate_tokens
+    small = estimate_tokens([{"role": "user", "content": "x" * 300}], {})
+    big = estimate_tokens([{"role": "user", "content": "x" * 3000}], {})
+    assert big > small >= 100  # conservative: at most ~3 chars per token
+    assert estimate_tokens([{"role": "user", "content": ""}], {"a": "b" * 300}) >= 100
