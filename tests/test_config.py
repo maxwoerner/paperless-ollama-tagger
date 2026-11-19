@@ -32,3 +32,19 @@ def test_defaults_and_parsing(monkeypatch):
 
 def test_dry_run_true(monkeypatch):
     assert make(monkeypatch, {**ENV, "DRY_RUN": "true"}).dry_run is True
+
+
+def test_tag_inbox_configurable(monkeypatch):
+    s = make(monkeypatch, {**ENV, "TAG_INBOX": "ai-analyze"})
+    assert s.tag_inbox == "ai-analyze"
+
+
+@pytest.mark.parametrize("env", [
+    {"TAG_INBOX": "x", "TAG_REVIEW": "x"},
+    {"TAG_INBOX": "x", "TAG_ERROR": "x"},
+    {"TAG_REVIEW": "same", "TAG_ERROR": "same"},
+    {"TAG_INBOX": ""},
+])
+def test_marker_tag_names_must_be_distinct_and_non_empty(monkeypatch, env):
+    with pytest.raises(ValidationError):
+        make(monkeypatch, {**ENV, **env})

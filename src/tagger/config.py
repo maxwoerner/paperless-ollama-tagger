@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -26,3 +26,16 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_slash(cls, v: str) -> str:
         return v.rstrip("/")
+
+    @model_validator(mode="after")
+    def _check_tag_names(self) -> "Settings":
+        names = {"TAG_INBOX": self.tag_inbox, "TAG_REVIEW": self.tag_review, "TAG_ERROR": self.tag_error}
+        empty = [k for k, v in names.items() if not v.strip()]
+        if empty:
+            raise ValueError(f"{', '.join(empty)} must not be empty")
+        if len(set(names.values())) != 3:
+            raise ValueError(
+                "TAG_INBOX, TAG_REVIEW and TAG_ERROR must be three different tags, got "
+                + ", ".join(f"{k}={v!r}" for k, v in names.items())
+            )
+        return self

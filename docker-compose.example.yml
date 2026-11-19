@@ -16,7 +16,7 @@ services:
       NUM_CTX: "8192"
       REQUEST_TIMEOUT_SECONDS: "600"
       RULES_PATH: /config/rules.md
-      TAG_INBOX: inbox
+      TAG_INBOX: inbox                # trigger tag: removed from documents after successful analysis
       TAG_REVIEW: ai-review
       TAG_ERROR: ai-error
       DEFAULT_CURRENCY: EUR

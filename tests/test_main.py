@@ -146,3 +146,18 @@ def test_startup_no_history_warning_when_ok(settings, caplog):
     with caplog.at_level(logging.WARNING, logger="tagger"):
         startup(settings, FP(), FO())
     assert not any("history" in m.lower() for m in caplog.messages)
+
+
+def test_startup_custom_trigger_tag(settings):
+    settings.tag_inbox = "ai-analyze"
+    p = FP(tags=("ai-analyze",))
+    _, ids = startup(settings, p, FO())
+    assert ids["inbox"] == 1
+    assert "ai-analyze" not in p.ensured  # never created
+
+
+def test_startup_custom_trigger_tag_missing_exits(settings):
+    settings.tag_inbox = "ai-analyze"
+    with pytest.raises(SystemExit) as e:
+        startup(settings, FP(tags=("inbox",)), FO())  # default tag exists, custom does not
+    assert e.value.code == 2

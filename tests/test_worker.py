@@ -39,9 +39,11 @@ class FakePaperless:
 class FakeOllama:
     def __init__(self, *outcomes):
         self.outcomes, self.calls = list(outcomes), 0
+        self.last_messages = self.last_schema = None
 
     def chat_json(self, messages, schema):
         self.calls += 1
+        self.last_messages, self.last_schema = messages, schema
         o = self.outcomes.pop(0) if len(self.outcomes) > 1 else self.outcomes[0]
         if isinstance(o, Exception):
             raise o
@@ -129,3 +131,16 @@ def test_no_context_warning_when_prompt_fits(settings, caplog):
     with caplog.at_level(logging.WARNING, logger="tagger"):
         run(settings, FakePaperless([mk_doc(1)]), FakeOllama(ANSWER))
     assert not any("num_ctx" in m for m in caplog.messages)
+
+
+def test_custom_trigger_tag_is_hidden_from_model_and_removed(settings, monkeypatch):
+    global VOCAB
+    settings.tag_inbox = "ai-analyze"
+    custom = Vocabulary({**TAGS, "ai-analyze": 5}, VOCAB.correspondents, {}, [])
+    monkeypatch.setitem(globals(), "VOCAB", custom)
+    p, o = FakePaperless([mk_doc(1)]), FakeOllama(ANSWER)
+    p.load_vocabulary = lambda: custom
+    assert run(settings, p, o).processed == 1
+    assert "ai-analyze" not in o.last_schema["properties"]["tags"]["items"]["enum"]
+    assert "ai-analyze" not in o.last_messages[1]["content"]
+    assert 5 not in p.patches[0][1]["tags"]
