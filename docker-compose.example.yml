@@ -1,6 +1,6 @@
 services:
   paperless-ollama-tagger:
-    build: .
+    image: ghcr.io/maxwoerner/paperless-ollama-tagger:0.1.0   # pin a release; see the releases page for newer versions
     restart: unless-stopped
     environment:
       TZ: Europe/Berlin               # needed for SCHEDULE_CRON to use local time

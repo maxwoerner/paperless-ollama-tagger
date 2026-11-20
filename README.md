@@ -15,8 +15,12 @@ It only ever uses tags, correspondents and document types that already exist (it
 5. Start with `DRY_RUN=true` (logs what would be written, changes nothing). When the log looks right, set it to `false`.
 
 ```bash
-docker compose -f docker-compose.example.yml up --build
+docker compose -f docker-compose.example.yml up -d
 ```
+
+The compose file pulls the published image `ghcr.io/maxwoerner/paperless-ollama-tagger` (multi-arch: amd64 and arm64). Pin a release tag such as `0.1.0`; `latest` always points at the newest stable release. Releases are listed on the repository's GitHub releases page.
+
+To build from source instead, replace the `image:` line with `build: .`.
 
 ## Behaviour
 
@@ -31,4 +35,4 @@ docker compose -f docker-compose.example.yml up --build
 
 The trigger tag is a *work-queue flag*, not a label: the tool **removes it from every document it processes successfully** (in the same update that adds `ai-review`). Pick a tag whose only meaning is "analyse this", such as the default `inbox` or a dedicated `ai-analyze`. Do **not** point `TAG_INBOX` at a tag you want to keep on documents (for example `Steuer`): it would be stripped. The tool also never offers the trigger, review or error tag to the model. `TAG_INBOX`, `TAG_REVIEW` and `TAG_ERROR` must be three different, non-empty names; otherwise startup fails.
 
-Configuration is via environment variables; see `docker-compose.example.yml`.
+Configuration is via environment variables; see `docker-compose.example.yml`. Runs are scheduled with either `SCHEDULE_CRON` (cron expression in the `TZ` time zone) or, if unset, every `POLL_INTERVAL_SECONDS` (default 300).
