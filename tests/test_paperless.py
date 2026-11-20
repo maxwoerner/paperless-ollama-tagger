@@ -39,7 +39,7 @@ def test_vocabulary_follows_pagination(client):
 
 @respx.mock
 def test_auth_and_accept_headers(client):
-    r = respx.get(f"{BASE}/api/").mock(return_value=httpx.Response(200, headers={"X-Version": "2.14.0"}, json={}))
+    r = respx.get(f"{BASE}/api/ui_settings/").mock(return_value=httpx.Response(200, headers={"X-Version": "2.14.0"}, json={}))
     assert client.version() == "2.14.0"
     req = r.calls[0].request
     assert req.headers["authorization"] == "Token t"
@@ -48,7 +48,7 @@ def test_auth_and_accept_headers(client):
 
 @respx.mock
 def test_version_missing_raises(client):
-    respx.get(f"{BASE}/api/").mock(return_value=httpx.Response(200, json={}))
+    respx.get(f"{BASE}/api/ui_settings/").mock(return_value=httpx.Response(200, json={}))
     with pytest.raises(PaperlessError):
         client.version()
 
@@ -131,7 +131,7 @@ def test_5xx_raises(client):
 
 @respx.mock
 def test_connect_error_raises(client):
-    respx.get(f"{BASE}/api/").mock(side_effect=httpx.ConnectError("x"))
+    respx.get(f"{BASE}/api/ui_settings/").mock(side_effect=httpx.ConnectError("x"))
     with pytest.raises(PaperlessError):
         client.version()
 
@@ -141,10 +141,9 @@ def test_negotiates_api_version_downwards(client):
     def handler(request):
         if "version=10" in request.headers["accept"]:
             return httpx.Response(406, text="invalid version")
-        return httpx.Response(200, headers={"X-Version": "2.14.0"}, json={})
+        return httpx.Response(200, headers={"X-Version": "2.14.0"}, json={"user": {"id": 1}})
 
-    respx.get(f"{BASE}/api/").mock(side_effect=handler)
-    respx.get(f"{BASE}/api/ui_settings/").mock(return_value=httpx.Response(200, json={"user": {"id": 1}}))
+    respx.get(f"{BASE}/api/ui_settings/").mock(side_effect=handler)
     assert client.version() == "2.14.0"
     client.own_user_id()
     last = respx.calls.last.request
@@ -153,7 +152,7 @@ def test_negotiates_api_version_downwards(client):
 
 @respx.mock
 def test_incompatible_when_server_rejects_all_supported_versions(client):
-    respx.get(f"{BASE}/api/").mock(return_value=httpx.Response(406, text="invalid version"))
+    respx.get(f"{BASE}/api/ui_settings/").mock(return_value=httpx.Response(406, text="invalid version"))
     with pytest.raises(PaperlessIncompatible):
         client.version()
 
@@ -190,3 +189,15 @@ def test_user_edited_real_payload_shape(client):
     respx.get(f"{BASE}/api/documents/1/history/").mock(return_value=httpx.Response(200, json=[
         {"id": 3, "action": "Update", "changes": {}, "actor": {"id": 2, "username": "anna"}}]))
     assert client.user_edited(1, 7) is True  # tolerate capitalised action
+
+
+@respx.mock
+def test_user_edited_ignores_tag_only_updates(client):
+    url = f"{BASE}/api/documents/1/history/"
+    respx.get(url).mock(return_value=httpx.Response(200, json=[
+        {"action": "update", "changes": {"tags": {"type": "m2m", "operation": "add"}},
+         "actor": {"id": 2}}]))
+    assert client.user_edited(1, 7) is False
+    respx.get(url).mock(return_value=httpx.Response(200, json=[
+        {"action": "update", "changes": {"tags": {}, "title": ["a", "b"]}, "actor": {"id": 2}}]))
+    assert client.user_edited(1, 7) is True

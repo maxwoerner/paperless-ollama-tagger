@@ -7,7 +7,7 @@ It only ever uses tags, correspondents and document types that already exist (it
 ## Setup
 
 1. **Create a dedicated Paperless user** for the tool and generate an API token for it.
-   User-edit detection compares the document history's actors against the tool's own user. If you use your personal token, your manual edits look like the tool's and are overwritten.
+   User-edit detection compares the document history's actors against the tool's own user; only edits to title, date, correspondent, document type or custom fields by someone else protect those fields (tag-only changes, such as you adding the trigger tag, do not). If you use your personal token, your manual edits look like the tool's and are overwritten.
    The history endpoint is only readable by a user who has the **audit log view permission** (`auditlog | log entry | Can view`) and who either owns the document or is a superuser. Without that, the tool cannot see who edited a document; it logs a warning at startup and treats every document as user-edited.
 2. Make sure the audit log is enabled (it is by default) and that the trigger tag exists (by default `inbox`; to use another tag, create it and set `TAG_INBOX`; the tool never creates it and exits if it is missing). If the history is unavailable, every document is treated as user-edited (only empty fields are filled).
 3. Pull a small multilingual model with good JSON adherence in Ollama. Candidates to try: `qwen3:4b`, `gemma3:4b`, `llama3.2:3b`.

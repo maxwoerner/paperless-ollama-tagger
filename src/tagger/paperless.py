@@ -23,6 +23,10 @@ class PaperlessIncompatible(Exception):
 API_VERSIONS = (10, 9, 8, 7)
 
 
+# Document fields the tagger may write; user edits to these protect them from overwriting.
+MANAGED_FIELDS = frozenset({"title", "created", "correspondent", "document_type", "custom_fields"})
+
+
 class PaperlessClient:
     def __init__(self, base_url: str, token: str, timeout: float):
         self._http = httpx.Client(
@@ -55,11 +59,11 @@ class PaperlessClient:
     def version(self) -> str:
         for api in API_VERSIONS:
             self._http.headers["Accept"] = f"application/json; version={api}"
-            r = self._request("GET", "/api/")
+            r = self._request("GET", "/api/ui_settings/")
             if r.status_code == 406:  # server does not support this API version
                 continue
             if r.status_code >= 400:
-                raise PaperlessError(f"GET /api/: HTTP {r.status_code} {r.text[:200]}")
+                raise PaperlessError(f"GET /api/ui_settings/: HTTP {r.status_code} {r.text[:200]}")
             break
         else:
             raise PaperlessIncompatible(
@@ -156,7 +160,11 @@ class PaperlessClient:
         for e in entries:
             actor = e.get("actor")
             if str(e.get("action", "")).lower() == "update" and actor is not None and actor.get("id") != own_user_id:
-                return True
+                changes = e.get("changes")
+                # Tag-only updates (e.g. the user adding the trigger tag) are not edits of
+                # anything we would overwrite; unreadable or empty changes stay conservative.
+                if not isinstance(changes, dict) or not changes or MANAGED_FIELDS & changes.keys():
+                    return True
         return False
 
     def history_probe(self) -> int | None:
