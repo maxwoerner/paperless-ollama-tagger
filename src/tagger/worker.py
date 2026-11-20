@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from tagger.config import Settings
 from tagger.ollama import OllamaBadOutput, OllamaClient, OllamaTimeout, OllamaUnavailable
 from tagger.paperless import PaperlessClient, PaperlessError
-from tagger.patch import build_patch
+from tagger.patch import build_patch, describe_patch
 from tagger.prompt import build_messages, estimate_tokens
 from tagger.schema import build_response_schema
 
@@ -89,7 +89,8 @@ def run_once(
                 currency=settings.default_currency,
             )
             if settings.dry_run:
-                log.info("DRY RUN doc %s patch: %s", doc["id"], body)
+                log.info("DRY RUN doc %s '%s' would be patched:\n  %s", doc["id"], doc.get("title"),
+                         "\n  ".join(describe_patch(doc, answer, body, vocab)))
             else:
                 paperless.patch_document(doc["id"], body)
             log.info("doc %s '%s': %s", doc["id"], doc.get("title"), "; ".join(notes) or "no changes")

@@ -92,3 +92,56 @@ def build_patch(
             {"field": fid, "value": v} for fid, v in merged.items() if v is not None
         ]
     return patch, notes
+
+
+def describe_patch(doc: dict, answer: dict, body: dict, vocab: Vocabulary) -> list[str]:
+    """Human-readable per-field report of what a patch writes and what it skips (dry run)."""
+    names = {
+        kind: {v: k for k, v in getattr(vocab, kind).items()}
+        for kind in ("tags", "correspondents", "document_types")
+    }
+
+    def status(key: str, current: object, suggested: object, shown_cur: object, shown_new: object) -> str:
+        if key in body:
+            return f"WRITE {shown_cur!r} -> {shown_new!r}"
+        if _empty(suggested):
+            return f"no suggestion (current {shown_cur!r})"
+        if suggested == current:
+            return f"unchanged ({shown_cur!r})"
+        return f"SKIP, keeping {shown_cur!r}; model suggested {suggested!r}"
+
+    lines = []
+    title = answer.get("title")
+    title = title.strip() if isinstance(title, str) else title
+    lines.append("title: " + status("title", doc.get("title"), title, doc.get("title"), body.get("title")))
+
+    created = parse_date(answer.get("created"))
+    current = str(doc.get("created") or "")[:10] or None
+    lines.append("created: " + status("created", current, created, current, body.get("created")))
+
+    for key, kind in (("correspondent", "correspondents"), ("document_type", "document_types")):
+        suggested = answer.get(key)
+        ident = vocab.lookup(kind, suggested) if not _empty(suggested) else None
+        if not _empty(suggested) and ident is None:
+            lines.append(f"{key}: DROP unknown {suggested!r}")
+            continue
+        cur = names[kind].get(doc.get(key))
+        new = names[kind].get(body.get(key))
+        lines.append(f"{key}: " + status(key, doc.get(key), ident, cur, new))
+
+    before = [names["tags"].get(t, t) for t in doc.get("tags") or []]
+    after = [names["tags"].get(t, t) for t in body.get("tags", [])]
+    lines.append(f"tags: {before} -> {after}")
+
+    existing = {cf["field"]: cf.get("value") for cf in doc.get("custom_fields") or []}
+    written = {cf["field"]: cf["value"] for cf in body.get("custom_fields", [])}
+    for name, raw in (answer.get("custom_fields") or {}).items():
+        f = next((f for f in vocab.fillable_fields() if f.name == name), None)
+        if f is None:
+            lines.append(f"custom field {name!r}: DROP unknown")
+        elif f.id in written and written[f.id] != existing.get(f.id):
+            lines.append(f"custom field {name!r}: WRITE {existing.get(f.id)!r} -> {written[f.id]!r}")
+        else:
+            lines.append(f"custom field {name!r}: SKIP/unchanged; model suggested {raw!r}, "
+                         f"current {existing.get(f.id)!r}")
+    return lines

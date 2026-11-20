@@ -144,3 +144,22 @@ def test_custom_trigger_tag_is_hidden_from_model_and_removed(settings, monkeypat
     assert "ai-analyze" not in o.last_schema["properties"]["tags"]["items"]["enum"]
     assert "ai-analyze" not in o.last_messages[1]["content"]
     assert 5 not in p.patches[0][1]["tags"]
+
+
+def test_dry_run_logs_every_field_including_title(settings, caplog):
+    settings.dry_run = True
+    p = FakePaperless([mk_doc(1)])
+    with caplog.at_level("INFO", logger="tagger"):
+        run(settings, p, FakeOllama({**ANSWER, "title": "Telekom Rechnung", "tags": ["pkv"]}))
+    text = caplog.text
+    assert "title: WRITE 'd1' -> 'Telekom Rechnung'" in text
+    assert "correspondent: WRITE None -> 'Telekom'" in text
+    assert "tags: ['inbox'] -> ['pkv', 'ai-review']" in text
+
+
+def test_dry_run_shows_skipped_title_suggestion(settings, caplog):
+    settings.dry_run = True
+    p = FakePaperless([mk_doc(1)], edited=True)
+    with caplog.at_level("INFO", logger="tagger"):
+        run(settings, p, FakeOllama({**ANSWER, "title": "Better"}))
+    assert "title: SKIP, keeping 'd1'; model suggested 'Better'" in caplog.text
